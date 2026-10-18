@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { SEVERITY_ORDER } from '../lib/severity'
 import type { Finding, Severity, Verdict } from '../types'
 import { VERDICT_LABELS } from '../lib/verdicts'
-import { SeverityBadge, VerdictPill } from './Badges'
+import { EcosystemTag, ExploitRisk, SeverityBadge, VerdictPill } from './Badges'
 import { SearchIcon } from './Icons'
 
 interface Props {
@@ -15,6 +15,8 @@ export function FindingsTable({ findings, dependabotChecked, onSelect }: Props) 
   const [query, setQuery] = useState('')
   const [severities, setSeverities] = useState<Set<Severity>>(new Set())
   const [verdict, setVerdict] = useState<Verdict | 'all'>('all')
+  const [exploitedOnly, setExploitedOnly] = useState(false)
+  const anyExploited = findings.some((f) => f.kev)
 
   const verdictsPresent = useMemo(
     () => (Object.keys(VERDICT_LABELS) as Verdict[]).filter((v) => findings.some((f) => f.verdict === v)),
@@ -26,12 +28,13 @@ export function FindingsTable({ findings, dependabotChecked, onSelect }: Props) 
     return findings.filter((f) => {
       if (severities.size && !severities.has(f.severity)) return false
       if (verdict !== 'all' && f.verdict !== verdict) return false
+      if (exploitedOnly && !f.kev) return false
       if (!q) return true
       return [f.id, ...f.aliases, f.summary, f.dependency.name, f.dependency.manifest].some((text) =>
         text.toLowerCase().includes(q),
       )
     })
-  }, [findings, query, severities, verdict])
+  }, [findings, query, severities, verdict, exploitedOnly])
 
   const toggleSeverity = (sev: Severity) => {
     setSeverities((prev) => {
@@ -73,6 +76,16 @@ export function FindingsTable({ findings, dependabotChecked, onSelect }: Props) 
             ))}
           </div>
 
+          {anyExploited && (
+            <button
+              type="button"
+              className={`chip chip-kev ${exploitedOnly ? 'on' : ''}`}
+              onClick={() => setExploitedOnly((on) => !on)}
+            >
+              Exploited only
+            </button>
+          )}
+
           {dependabotChecked && (
             <select value={verdict} onChange={(e) => setVerdict(e.target.value as Verdict | 'all')}>
               <option value="all">All verdicts</option>
@@ -100,6 +113,7 @@ export function FindingsTable({ findings, dependabotChecked, onSelect }: Props) 
               <th>Package</th>
               <th>Installed</th>
               <th>Fixed in</th>
+              <th>Exploit risk</th>
               <th>Verdict</th>
             </tr>
           </thead>
@@ -115,7 +129,7 @@ export function FindingsTable({ findings, dependabotChecked, onSelect }: Props) 
                 </td>
                 <td>
                   <div className="pkg">
-                    <span className={`eco eco-${f.dependency.ecosystem.toLowerCase()}`}>{f.dependency.ecosystem}</span>
+                    <EcosystemTag ecosystem={f.dependency.ecosystem} />
                     {f.dependency.name}
                   </div>
                   <span className="manifest">{f.dependency.manifest}</span>
@@ -124,6 +138,9 @@ export function FindingsTable({ findings, dependabotChecked, onSelect }: Props) 
                   <code>{f.dependency.version}</code>
                 </td>
                 <td>{f.fixedIn ? <code className="fix">{f.fixedIn}</code> : <span className="muted">—</span>}</td>
+                <td>
+                  <ExploitRisk finding={f} />
+                </td>
                 <td>
                   <VerdictPill verdict={f.verdict} />
                 </td>

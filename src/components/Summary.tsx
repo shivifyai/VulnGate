@@ -1,7 +1,8 @@
-import { downloadCsv, downloadJson } from '../lib/report'
+import { useState } from 'react'
+import { downloadCsv, downloadJson, downloadMarkdown } from '../lib/report'
 import { atLeast, SEVERITY_ORDER } from '../lib/severity'
 import type { RunResult } from '../types'
-import { CheckIcon, DownloadIcon, ExternalIcon, XIcon } from './Icons'
+import { CheckIcon, DownloadIcon, ExternalIcon, LinkIcon, XIcon } from './Icons'
 
 export function Summary({ result }: { result: RunResult }) {
   const { failOn } = result
@@ -11,7 +12,19 @@ export function Summary({ result }: { result: RunResult }) {
   )
   const packages = new Set(active.map((f) => `${f.dependency.name}@${f.dependency.version}`)).size
   const fixable = active.filter((f) => f.fixedIn).length
-  const blocking = active.filter((f) => atLeast(f.severity, failOn)).length
+  const blocking = active.filter((f) => atLeast(f.severity, failOn) || (result.failOnExploited && f.kev)).length
+  const exploited = active.filter((f) => f.kev).length
+  const [copied, setCopied] = useState(false)
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      // clipboard can be blocked, the address bar has the same link anyway
+    }
+  }
 
   return (
     <section className="summary">
@@ -22,13 +35,19 @@ export function Summary({ result }: { result: RunResult }) {
           <p>
             {result.passed
               ? `No open findings at ${failOn.toLowerCase()} severity or above.`
-              : `${blocking} finding${blocking === 1 ? '' : 's'} at ${failOn.toLowerCase()} severity or above need attention.`}
+              : `${blocking} finding${blocking === 1 ? '' : 's'} at ${failOn.toLowerCase()} severity or above${result.failOnExploited ? ', or known to be exploited,' : ''} need attention.`}
           </p>
           <a href={result.repo.htmlUrl} target="_blank" rel="noreferrer" className="repo-link">
             {result.repo.fullName} <span className="muted">@ {result.ref}</span> <ExternalIcon size={14} />
           </a>
         </div>
         <div className="gate-actions">
+          <button className="btn btn-ghost" onClick={copyLink}>
+            <LinkIcon size={16} /> {copied ? 'Copied' : 'Link'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => downloadMarkdown(result)}>
+            <DownloadIcon size={16} /> Markdown
+          </button>
           <button className="btn btn-ghost" onClick={() => downloadJson(result)}>
             <DownloadIcon size={16} /> JSON
           </button>
@@ -45,6 +64,10 @@ export function Summary({ result }: { result: RunResult }) {
             <span className="stat-label">{sev === 'UNKNOWN' ? 'Unrated' : sev.toLowerCase()}</span>
           </div>
         ))}
+        <div className="stat card stat-kev">
+          <span className="stat-value">{exploited}</span>
+          <span className="stat-label">exploited in the wild</span>
+        </div>
         <div className="stat card stat-neutral">
           <span className="stat-value">{result.dependencies.length}</span>
           <span className="stat-label">packages scanned</span>

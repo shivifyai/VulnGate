@@ -1,0 +1,67 @@
+name: VulnGate
+description: Validate dependency vulnerabilities with OSV, EPSS and CISA KEV, cross-checked against Dependabot, and fail on a policy gate.
+author: shivifyai
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  repository:
+    description: Repository to scan, as owner/name
+    default: ${{ github.repository }}
+  ref:
+    description: Branch, tag or commit to scan
+    default: ${{ github.sha }}
+  fail-on:
+    description: Lowest severity that fails the job (critical, high, medium, low)
+    default: high
+  fail-on-exploited:
+    description: Fail on anything listed in CISA's Known Exploited Vulnerabilities catalog, whatever its severity
+    default: 'true'
+  include-dev:
+    description: Include dev dependencies
+    default: 'false'
+  token:
+    description: >
+      GitHub token. The default one can read the code; pass a token with
+      Dependabot alerts read access to get the Dependabot cross-check.
+    default: ${{ github.token }}
+
+outputs:
+  passed:
+    description: '"true" if the gate passed'
+    value: ${{ steps.scan.outputs.passed }}
+  findings:
+    description: Number of open findings
+    value: ${{ steps.scan.outputs.findings }}
+  exploited:
+    description: Number of findings that are known to be exploited
+    value: ${{ steps.scan.outputs.exploited }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build VulnGate
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund --loglevel=error && npm run build:cli
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        REF: ${{ inputs.ref }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        KEV: ${{ inputs.fail-on-exploited }}
+        DEV: ${{ inputs.include-dev }}
+      run: |
+        args=("$REPO" --ref "$REF" --fail-on "$FAIL_ON")
+        [ "$KEV" = "false" ] && args+=(--no-kev)
+        [ "$DEV" = "true" ] && args+=(--dev)
+        node "${{ github.action_path }}/dist-cli/vulngate.mjs" "${args[@]}"

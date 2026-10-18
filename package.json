@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:cli": "vite build --config vite.cli.config.ts",
+    "scan": "node dist-cli/vulngate.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -23,5 +25,9 @@
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.5"
+  },
+  "description": "Validate dependency vulnerabilities in any GitHub repo: OSV + EPSS + CISA KEV, cross-checked with Dependabot.",
+  "bin": {
+    "vulngate": "dist-cli/vulngate.mjs"
   }
 }

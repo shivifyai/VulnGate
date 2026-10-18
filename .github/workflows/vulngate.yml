@@ -1,0 +1,21 @@
+# Scans this repository with its own action, on every PR and once a week
+# so newly published advisories get caught even when nothing changes here.
+name: VulnGate scan
+
+on:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          fail-on: high

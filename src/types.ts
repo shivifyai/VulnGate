@@ -1,4 +1,4 @@
-export type Ecosystem = 'npm' | 'PyPI' | 'Go'
+export type Ecosystem = 'npm' | 'PyPI' | 'Go' | 'crates.io' | 'RubyGems' | 'Packagist'
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN'
 
@@ -31,9 +31,13 @@ export interface Finding {
   published?: string
   verdict: Verdict
   alertUrl?: string
+  // Chance of exploitation in the next 30 days, from FIRST's EPSS model (0..1)
+  epss?: { score: number; percentile: number }
+  // Present when CISA lists the CVE as actively exploited in the wild
+  kev?: { dateAdded: string; ransomware: boolean }
 }
 
-export type StageId = 'repo' | 'manifests' | 'parse' | 'osv' | 'alerts' | 'gate'
+export type StageId = 'repo' | 'manifests' | 'parse' | 'osv' | 'exploits' | 'alerts' | 'gate'
 
 export type StageStatus = 'idle' | 'running' | 'done' | 'failed' | 'skipped'
 
@@ -61,6 +65,7 @@ export interface RunOptions {
   token?: string
   failOn: Severity
   includeDev: boolean
+  failOnExploited: boolean
 }
 
 export interface RunResult {
@@ -71,6 +76,7 @@ export interface RunResult {
   findings: Finding[]
   dependabotChecked: boolean
   failOn: Severity
+  failOnExploited: boolean
   passed: boolean
   finishedAt: string
 }

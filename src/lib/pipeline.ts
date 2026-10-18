@@ -1,15 +1,17 @@
 import type { Dependency, Ecosystem, Finding, RunOptions, RunResult, Stage, StageId } from '../types'
 import { GitHubClient, GitHubError, type DependabotAlert } from './github'
-import { dedupe, parseManifest, pickManifests } from './manifests'
+import { cvesOf, loadEpss, loadKev, riskScore } from './exploits'
+import { dedupe, MAX_MANIFESTS, parseManifest, pickManifests, SUPPORTED_FILES } from './manifests'
 import { findVulnerableDeps, fixedVersionFor, getVuln, severityOf } from './osv'
 import { mapLimit } from './pool'
-import { atLeast, normalizeSeverity, severityRank } from './severity'
+import { atLeast, normalizeSeverity } from './severity'
 
 export const STAGES: Pick<Stage, 'id' | 'title'>[] = [
   { id: 'repo', title: 'Resolve repository' },
   { id: 'manifests', title: 'Find manifests' },
   { id: 'parse', title: 'Parse dependencies' },
   { id: 'osv', title: 'Query OSV database' },
+  { id: 'exploits', title: 'Exploit intelligence' },
   { id: 'alerts', title: 'Cross-check Dependabot' },
   { id: 'gate', title: 'Policy gate' },
 ]
@@ -20,7 +22,14 @@ export interface PipelineHooks {
   signal?: AbortSignal
 }
 
-const DEPENDABOT_ECOSYSTEMS: Record<string, Ecosystem> = { npm: 'npm', pip: 'PyPI', go: 'Go' }
+const DEPENDABOT_ECOSYSTEMS: Record<string, Ecosystem> = {
+  npm: 'npm',
+  pip: 'PyPI',
+  go: 'Go',
+  rust: 'crates.io',
+  rubygems: 'RubyGems',
+  composer: 'Packagist',
+}
 
 export class Cancelled extends Error {}
 
@@ -61,9 +70,13 @@ export async function runPipeline(options: RunOptions, hooks: PipelineHooks): Pr
     const { paths, truncated } = await gh.listFiles(repo.fullName, ref)
     if (truncated) onLog('The repository tree is huge and GitHub truncated it, some manifests may be missed.', 'warn')
 
-    const picked = pickManifests(paths)
+    let picked = pickManifests(paths)
+    if (picked.length > MAX_MANIFESTS) {
+      onLog(`Found ${picked.length} manifests, only scanning the first ${MAX_MANIFESTS}`, 'warn')
+      picked = picked.slice(0, MAX_MANIFESTS)
+    }
     onStage('manifests', { note: `${picked.length} of ${paths.length} files` })
-    if (picked.length === 0) onLog('No supported manifests found (package.json, package-lock.json, requirements.txt, go.mod).', 'warn')
+    if (picked.length === 0) onLog(`No supported manifests found. Looked for: ${SUPPORTED_FILES.join(', ')}`, 'warn')
     picked.forEach((p) => onLog(`  ${p}`))
     return picked
   })
@@ -71,7 +84,7 @@ export async function runPipeline(options: RunOptions, hooks: PipelineHooks): Pr
   const dependencies = await stage('parse', async () => {
     const parsed = await mapLimit(manifests, 4, async (path) => {
       try {
-        const content = await gh.readFile(repo.fullName, path, ref)
+        const content = await gh.readFile(repo.fullName, path, ref, !repo.isPrivate)
         const deps = parseManifest(path, content)
         onLog(`${path}: ${deps.length} packages`)
         return deps
@@ -124,6 +137,34 @@ export async function runPipeline(options: RunOptions, hooks: PipelineHooks): Pr
     return results
   })
 
+  await stage('exploits', async (skip) => {
+    const cves = findings.flatMap(cvesOf)
+    if (cves.length === 0) {
+      skip(findings.length ? 'no CVE ids' : 'nothing to check')
+      return
+    }
+
+    // Either source being down shouldn't sink the whole run
+    const [kev, epss] = await Promise.allSettled([loadKev(), loadEpss(cves)])
+    if (kev.status === 'rejected') onLog(`Couldn't load the CISA KEV catalog: ${kev.reason.message}`, 'warn')
+    if (epss.status === 'rejected') onLog(`Couldn't load EPSS scores: ${epss.reason.message}`, 'warn')
+
+    findings = findings.map((f) => {
+      const ids = cvesOf(f)
+      const kevHit = kev.status === 'fulfilled' ? ids.map((id) => kev.value.get(id)).find(Boolean) : undefined
+      const epssHit = epss.status === 'fulfilled'
+        ? ids.map((id) => epss.value.get(id)).filter(Boolean).sort((a, b) => b!.score - a!.score)[0]
+        : undefined
+      return { ...f, kev: kevHit, epss: epssHit }
+    })
+
+    const exploited = findings.filter((f) => f.kev).length
+    const likely = findings.filter((f) => (f.epss?.score ?? 0) >= 0.1).length
+    if (exploited) onLog(`${exploited} findings are on CISA's known exploited list`, 'warn')
+    onLog(`${likely} findings have a 10%+ EPSS chance of exploitation in the next 30 days`)
+    onStage('exploits', { note: exploited ? `${exploited} exploited in the wild` : `${likely} likely targets` })
+  })
+
   let dependabotChecked = false
 
   await stage('alerts', async (skip) => {
@@ -156,9 +197,12 @@ export async function runPipeline(options: RunOptions, hooks: PipelineHooks): Pr
   })
 
   const passed = await stage('gate', async () => {
-    const blocking = findings.filter((f) => f.verdict !== 'stale' && atLeast(f.severity, options.failOn))
+    const blocking = findings.filter(
+      (f) => f.verdict !== 'stale' && (atLeast(f.severity, options.failOn) || (options.failOnExploited && f.kev)),
+    )
     if (blocking.length) {
-      onLog(`${blocking.length} findings at ${options.failOn} or above, failing the gate`, 'error')
+      const rule = options.failOnExploited ? `${options.failOn} or above, or known exploited` : `${options.failOn} or above`
+      onLog(`${blocking.length} findings at ${rule}, failing the gate`, 'error')
       onStage('gate', { note: `${blocking.length} blocking` })
     } else {
       onLog(`Nothing at ${options.failOn} or above, gate passed`)
@@ -167,9 +211,7 @@ export async function runPipeline(options: RunOptions, hooks: PipelineHooks): Pr
     return blocking.length === 0
   })
 
-  findings.sort(
-    (a, b) => severityRank(b.severity) - severityRank(a.severity) || (b.score ?? 0) - (a.score ?? 0),
-  )
+  findings.sort((a, b) => riskScore(b) - riskScore(a))
 
   return {
     repo,
@@ -179,6 +221,7 @@ export async function runPipeline(options: RunOptions, hooks: PipelineHooks): Pr
     findings,
     dependabotChecked,
     failOn: options.failOn,
+    failOnExploited: options.failOnExploited,
     passed,
     finishedAt: new Date().toISOString(),
   }

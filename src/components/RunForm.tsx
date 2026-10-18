@@ -5,6 +5,7 @@ import { GitHubIcon, KeyIcon, PlayIcon, StopIcon } from './Icons'
 
 interface Props {
   running: boolean
+  initial?: Partial<RunOptions>
   onRun: (options: RunOptions) => void
   onCancel: () => void
 }
@@ -12,12 +13,13 @@ interface Props {
 const EXAMPLES = ['expressjs/express', 'psf/requests', 'gin-gonic/gin']
 const THRESHOLDS: Severity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 
-export function RunForm({ running, onRun, onCancel }: Props) {
-  const [repo, setRepo] = useState('')
-  const [ref, setRef] = useState('')
+export function RunForm({ running, initial, onRun, onCancel }: Props) {
+  const [repo, setRepo] = useState(initial?.repo ?? '')
+  const [ref, setRef] = useState(initial?.ref ?? '')
   const [token, setToken] = useState('')
-  const [failOn, setFailOn] = useState<Severity>('HIGH')
-  const [includeDev, setIncludeDev] = useState(false)
+  const [failOn, setFailOn] = useState<Severity>(initial?.failOn ?? 'HIGH')
+  const [includeDev, setIncludeDev] = useState(initial?.includeDev ?? false)
+  const [failOnExploited, setFailOnExploited] = useState(initial?.failOnExploited ?? true)
   const [problem, setProblem] = useState<string | null>(null)
 
   const submit = (event: FormEvent) => {
@@ -28,7 +30,7 @@ export function RunForm({ running, onRun, onCancel }: Props) {
       return
     }
     setProblem(null)
-    onRun({ repo: fullName, ref, token, failOn, includeDev })
+    onRun({ repo: fullName, ref, token, failOn, includeDev, failOnExploited })
   }
 
   return (
@@ -92,6 +94,10 @@ export function RunForm({ running, onRun, onCancel }: Props) {
         <label className="checkbox">
           <input type="checkbox" checked={includeDev} onChange={(e) => setIncludeDev(e.target.checked)} />
           Include dev dependencies
+        </label>
+        <label className="checkbox" title="Anything on CISA's Known Exploited Vulnerabilities list fails the gate, whatever its severity">
+          <input type="checkbox" checked={failOnExploited} onChange={(e) => setFailOnExploited(e.target.checked)} />
+          Always fail on exploited CVEs
         </label>
       </div>
 

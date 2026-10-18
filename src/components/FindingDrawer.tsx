@@ -1,15 +1,27 @@
 import { useEffect } from 'react'
 import type { Finding } from '../types'
 import { VERDICT_LABELS } from '../lib/verdicts'
+import { formatEpss } from '../lib/format'
 import { SeverityBadge, VerdictPill } from './Badges'
 import { ExternalIcon, XIcon } from './Icons'
 
 function upgradeCommand(f: Finding) {
   if (!f.fixedIn) return null
   const { name, ecosystem } = f.dependency
-  if (ecosystem === 'npm') return `npm install ${name}@${f.fixedIn}`
-  if (ecosystem === 'PyPI') return `pip install "${name}>=${f.fixedIn}"`
-  return `go get ${name}@v${f.fixedIn}`
+  switch (ecosystem) {
+    case 'npm':
+      return `npm install ${name}@${f.fixedIn}`
+    case 'PyPI':
+      return `pip install "${name}>=${f.fixedIn}"`
+    case 'Go':
+      return `go get ${name}@v${f.fixedIn}`
+    case 'crates.io':
+      return `cargo update -p ${name} --precise ${f.fixedIn}`
+    case 'RubyGems':
+      return `bundle update ${name}  # needs >= ${f.fixedIn}`
+    case 'Packagist':
+      return `composer require "${name}:^${f.fixedIn}"`
+  }
 }
 
 export function FindingDrawer({ finding, onClose }: { finding: Finding | null; onClose: () => void }) {
@@ -39,6 +51,14 @@ export function FindingDrawer({ finding, onClose }: { finding: Finding | null; o
 
         <p className="drawer-summary">{finding.summary}</p>
 
+        {finding.kev && (
+          <div className="kev-box">
+            <strong>Actively exploited.</strong> CISA added this to its Known Exploited Vulnerabilities catalog on{' '}
+            {new Date(finding.kev.dateAdded).toLocaleDateString()}
+            {finding.kev.ransomware && ', and it is known to be used in ransomware campaigns'}. Patch this first.
+          </div>
+        )}
+
         <dl className="facts">
           <dt>Package</dt>
           <dd>
@@ -60,6 +80,17 @@ export function FindingDrawer({ finding, onClose }: { finding: Finding | null; o
             <VerdictPill verdict={finding.verdict} />
             <span className="muted verdict-hint">{VERDICT_LABELS[finding.verdict].hint}</span>
           </dd>
+          {finding.epss && (
+            <>
+              <dt>EPSS</dt>
+              <dd>
+                {formatEpss(finding.epss.score)} chance of exploitation in the next 30 days
+                <span className="muted verdict-hint">
+                  Riskier than {(finding.epss.percentile * 100).toFixed(0)}% of all published CVEs
+                </span>
+              </dd>
+            </>
+          )}
           {finding.published && (
             <>
               <dt>Published</dt>

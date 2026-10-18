@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FindingDrawer } from './components/FindingDrawer'
 import { FindingsTable } from './components/FindingsTable'
 import { ShieldIcon } from './components/Icons'
@@ -6,12 +6,31 @@ import { PipelineStages } from './components/PipelineStages'
 import { RunForm } from './components/RunForm'
 import { Summary } from './components/Summary'
 import { usePipeline } from './hooks/usePipeline'
-import type { Finding } from './types'
+import { optionsFromQuery, optionsToQuery } from './lib/shareLink'
+import type { Finding, RunOptions } from './types'
 
 export default function App() {
   const { stages, logs, result, error, running, start, cancel } = usePipeline()
   const [selected, setSelected] = useState<Finding | null>(null)
+  const [initial] = useState(() => optionsFromQuery(window.location.search))
+  const autoStarted = useRef(false)
   const hasStarted = logs.length > 0
+
+  // Keep the address bar in sync so a run can be shared as a link
+  const run = useCallback(
+    (options: RunOptions) => {
+      window.history.replaceState(null, '', optionsToQuery(options))
+      start(options)
+    },
+    [start],
+  )
+
+  // Opening a shared link (?repo=owner/name) kicks off the scan straight away
+  useEffect(() => {
+    if (!initial?.repo || autoStarted.current) return
+    autoStarted.current = true
+    run({ repo: initial.repo, ref: '', failOn: 'HIGH', includeDev: false, failOnExploited: true, ...initial })
+  }, [initial, run])
 
   return (
     <div className="app">
@@ -32,7 +51,7 @@ export default function App() {
       </header>
 
       <main>
-        <RunForm running={running} onRun={start} onCancel={cancel} />
+        <RunForm running={running} initial={initial ?? undefined} onRun={run} onCancel={cancel} />
 
         {hasStarted && <PipelineStages stages={stages} logs={logs} />}
 
@@ -51,7 +70,10 @@ export default function App() {
       </main>
 
       <footer>
-        Data from <a href="https://osv.dev" target="_blank" rel="noreferrer">osv.dev</a> and the GitHub REST API.
+        Data from <a href="https://osv.dev" target="_blank" rel="noreferrer">osv.dev</a>,{' '}
+        <a href="https://www.first.org/epss/" target="_blank" rel="noreferrer">FIRST EPSS</a>,{' '}
+        <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noreferrer">CISA KEV</a>{' '}
+        and the GitHub REST API.
       </footer>
 
       <FindingDrawer finding={selected} onClose={() => setSelected(null)} />

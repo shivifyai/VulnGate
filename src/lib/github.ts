@@ -39,8 +39,12 @@ export class GitHubClient {
       } catch {
         // body wasn't JSON, the status text will have to do
       }
-      if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
-        message = 'GitHub rate limit reached. Add a token to get a higher limit.'
+      if ((res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0') {
+        const reset = Number(res.headers.get('x-ratelimit-reset')) * 1000
+        const when = reset ? ` It resets at ${new Date(reset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''
+        message = this.token
+          ? `GitHub rate limit reached for this token.${when}`
+          : `GitHub rate limit reached (60 requests an hour without a token).${when} Add a token to get 5,000 an hour.`
       }
       throw new GitHubError(res.status, message)
     }
@@ -68,8 +72,16 @@ export class GitHubClient {
     return { paths, truncated: Boolean(data.truncated) }
   }
 
-  async readFile(fullName: string, path: string, ref: string): Promise<string> {
+  async readFile(fullName: string, path: string, ref: string, isPublic = false): Promise<string> {
     const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+
+    // Public files can come from the raw CDN, which doesn't count against the API rate limit
+    if (isPublic) {
+      const encodedRef = ref.split('/').map(encodeURIComponent).join('/')
+      const res = await fetch(`https://raw.githubusercontent.com/${fullName}/${encodedRef}/${encodedPath}`)
+      if (res.ok) return res.text()
+    }
+
     const res = await this.request(
       `/repos/${fullName}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
       'application/vnd.github.raw+json',

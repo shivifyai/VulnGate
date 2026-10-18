@@ -21,6 +21,7 @@
   --unknown: #8b93ad;
   --ok: #34d399;
   --bad: #f87171;
+  --kev: #ff3d68;
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -560,7 +561,7 @@ select:focus {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 12px;
 }
 
@@ -587,6 +588,7 @@ select:focus {
 .stat-low { --stat-color: var(--low); }
 .stat-unknown { --stat-color: var(--unknown); }
 .stat-neutral { --stat-color: var(--accent); }
+.stat-kev { --stat-color: var(--kev); }
 
 .stat-value {
   font-size: 26px;
@@ -683,6 +685,7 @@ select:focus {
 .chip-medium { --chip-color: var(--medium); }
 .chip-low { --chip-color: var(--low); }
 .chip-unknown { --chip-color: var(--unknown); }
+.chip-kev { --chip-color: var(--kev); }
 
 .table-wrap {
   overflow-x: auto;
@@ -760,6 +763,51 @@ tbody tr:focus-visible {
 .eco-npm { color: #ff6b6b; background: rgba(255, 107, 107, 0.12); }
 .eco-pypi { color: #60a5fa; background: rgba(96, 165, 250, 0.12); }
 .eco-go { color: #2dd4bf; background: rgba(45, 212, 191, 0.12); }
+.eco-cratesio { color: #f59e0b; background: rgba(245, 158, 11, 0.12); }
+.eco-rubygems { color: #e11d48; background: rgba(225, 29, 72, 0.12); }
+.eco-packagist { color: #a78bfa; background: rgba(167, 139, 250, 0.14); }
+
+.exploit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.kev {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  color: #fff;
+  background: linear-gradient(135deg, var(--kev), #ff7a3d);
+  box-shadow: 0 6px 16px -8px var(--kev);
+}
+
+.epss {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: help;
+}
+.epss-bar {
+  width: 54px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.epss-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--medium), var(--critical));
+}
 
 code.fix {
   color: var(--ok);
@@ -916,6 +964,18 @@ code.fix {
   display: block;
   font-size: 12.5px;
   margin-top: 4px;
+}
+
+.kev-box {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  border: 1px solid color-mix(in srgb, var(--kev) 40%, transparent);
+  background: color-mix(in srgb, var(--kev) 10%, transparent);
+}
+.kev-box strong {
+  color: var(--kev);
 }
 
 .fix-box {
