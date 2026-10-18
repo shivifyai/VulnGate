@@ -6,6 +6,8 @@ VulnGate reads a repo's lockfiles, checks every pinned package against [OSV](htt
 
 For the full picture (the problem it solves, how validation and risk ranking work, design decisions and roadmap), see the **[project summary](docs/PROJECT_SUMMARY.md)**.
 
+![VulnGate results for a deliberately vulnerable app: failed gate, severity counts and findings ranked by exploit risk](docs/screenshots/02-results.png)
+
 ## What the pipeline does
 
 1. **Resolve the repository** and the branch, tag or commit to scan.
